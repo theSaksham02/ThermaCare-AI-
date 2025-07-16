@@ -1,31 +1,21 @@
-ThermaCareAI/
-├── dataset/
-│   ├── input_images/       # Your raw images (doll photos)
-│   ├── output_thermal/     # Generated thermal images
-├── src/
-│   ├── preprocessing.py    # Image preprocessing
-│   ├── analysis.py         # Temperature analysis
-├── results/
-│   ├── processed/          # Output images with annotations
-├── README.md
-
-Renewed Roadmap
+Roadmap
 NeoTherm-AI/
 ├── datasets/
-│   ├── thermal_dogs_people/
-│   │   ├── train/
-│   │   ├── valid/
-│   │   ├── test/
-│   │   └── cropped/
-│   └── simulated/
-│       ├── input_images/
-│       └── output_thermal_images/
-├── tutorials/
-│   ├── hypothermia_tutorial.mp4
-│   ├── hyperthermia_tutorial.mp4
-│   ├── kmc_tutorial.mp4
-│   ├── blanket_tutorial.mp4
-│   └── reassess_tutorial.mp4
+Thermo_Dataset/ 
+├── train/ -> 80%
+│   ├── hypothermic/
+│   ├── hyperthermic/
+│   └── normal/
+│
+├── test/ -> 10%
+│   ├── hypothermic/
+│   ├── hyperthermic/
+│   └── normal/
+│
+|└── validation/ -> 10% 
+|    ├── hypothermic/
+|    ├── hyperthermic/
+|    └── normal/
 ├── src/
 │   ├── main.py
 │   ├── crop_images.py
