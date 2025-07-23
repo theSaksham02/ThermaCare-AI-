@@ -22,9 +22,9 @@ Using the color intensity in these regions and the image’s temperature scale, 
 
 3. Labeling Logic
 Based on the average body temperature:
-- Hyperthermic: > 37.5°C
+- Hyperthermic: > 37.5°C 
 - Normal: 36.0°C – 37.5°C
-- Hypothermic: < 36.0°C
+- Hypothermic: < 36.0°C 
 
 I am also normalizing borderline cases, so:
 - Borderline hypothermic (e.g., 34–35.5°C) → can be labeled Normal
