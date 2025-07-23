@@ -32,7 +32,7 @@ NeoTherm AI is a low-cost, non-invasive thermoregulation monitoring system for n
 
 **Team**  
 - 👨‍💻 Saksham Mishra | University of Birmingham | Engineering Student  
-- 🩺 Dr. Ashi Soni | Lady Hardinge Medical College | Medical Student  
+- 🩺 Ashi Soni | Lady Hardinge Medical College | Medical Student  
 📩 **Contact**: sakshammishra0205@gmail.com
 
 ---
