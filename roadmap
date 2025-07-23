@@ -1,6 +1,5 @@
 Roadmap
 NeoTherm-AI/
-├── datasets/
 Thermo_Dataset/ 
 ├── train/ -> 80%
 │   ├── hypothermic/
