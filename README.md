@@ -32,7 +32,7 @@ NeoTherm AI is a low-cost, non-invasive thermoregulation monitoring system for n
 
 **Team**  
 - 👨‍💻 Saksham Mishra | University of Birmingham | Project Lead & Full-Stack Engineer 
-- 👨‍💻 Ankan Ganguli| IES IPS Indore | Prompt Engineer
+- 👨‍💻 Ankan Ganguli | IES IPS Academy Indore | Prompt Engineer
 - 🩺 Ashi Soni | Lady Hardinge Medical College | Medical Student  
 📩 **Contact**: sakshammishra0205@gmail.com
 
