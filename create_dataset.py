@@ -40,7 +40,16 @@ else:
         plt.imsave(os.path.join(OUTPUT_FOLDER, f'normal_{i}_v2.jpg'), COLOR_MAP(normal_v2))
         normal_v3 = np.clip(gray_image * 0.9, 0, 255).astype(np.uint8)
         plt.imsave(os.path.join(OUTPUT_FOLDER, f'normal_{i}_v3.jpg'), COLOR_MAP(normal_v3))
+        # Make a folder for normal images
+        normal_folder = os.path.join(OUTPUT_FOLDER, 'Normal')
+        if not os.path.exists(normal_folder):
+            os.makedirs(normal_folder)
+        # Save normal images in the normal folder
+        cv2.imwrite(os.path.join(normal_folder, f'normal_{i}_v1.jpg'), np.clip(gray_image, 0, 255).astype(np.uint8))
+        cv2.imwrite(os.path.join(normal_folder, f'normal_{i}_v2.jpg'), normal_v2)
+        cv2.imwrite(os.path.join(normal_folder, f'normal_{i}_v3.jpg'), normal_v3)   
 
+        
         # --- 2. Create HYPOTHERMIC images (3 versions) ---
         # Simulate cooling by darkening parts of the image
         hypo_base = gray_image.copy().astype(float)
@@ -57,7 +66,14 @@ else:
         # Version 3: Less intense cooling
         hypo_v3 = np.clip(hypo_base * 0.9 + 20, 0, 255).astype(np.uint8)
         plt.imsave(os.path.join(OUTPUT_FOLDER, f'hypothermic_{i}_v3.jpg'), COLOR_MAP(hypo_v3))
-
+        #Make a folder for hypothermic images
+        hypo_folder = os.path.join(OUTPUT_FOLDER, 'Hypothermic')
+        if not os.path.exists(hypo_folder):
+            os.makedirs(hypo_folder)
+        # Save hypothermic images in the hypothermic folder
+        cv2.imwrite(os.path.join(hypo_folder, f'hypothermic_{i}_v1.jpg'), np.clip(hypo_base, 0, 255).astype(np.uint8))
+        cv2.imwrite(os.path.join(hypo_folder, f'hypothermic_{i}_v2.jpg'), hypo_v2)
+        cv2.imwrite(os.path.join(hypo_folder, f'hypothermic_{i}_v3.jpg'), hypo_v3)
 
         # --- 3. Create HYPERTHERMIC images (3 versions) ---
         # Simulate fever by increasing brightness and reducing contrast
@@ -67,6 +83,14 @@ else:
         plt.imsave(os.path.join(OUTPUT_FOLDER, f'hyperthermic_{i}_v2.jpg'), COLOR_MAP(hyper_v2))
         hyper_v3 = cv2.equalizeHist(gray_image) # High contrast heat
         plt.imsave(os.path.join(OUTPUT_FOLDER, f'hyperthermic_{i}_v3.jpg'), COLOR_MAP(hyper_v3))
-
+        # Make a folder for hyperthermic images
+        hyper_folder = os.path.join(OUTPUT_FOLDER, 'Hyperthermic')
+        if not os.path.exists(hyper_folder):
+            os.makedirs(hyper_folder)
+        # Save hyperthermic images in the hyperthermic folder
+        cv2.imwrite(os.path.join(hyper_folder, f'hyperthermic_{i}_v1.jpg'), hyper_v1)
+        cv2.imwrite(os.path.join(hyper_folder, f'hyperthermic_{i}_v2.jpg'), hyper_v2)
+        cv2.imwrite(os.path.join(hyper_folder, f'hyperthermic_{i}_v3.jpg'), hyper_v3)
+        print(f"Processed {filename}: Created 9 new images (3 normal, 3 hypothermic, 3 hyperthermic)")          
 
     print(f"Success! Generated {len(image_files) * 9} new images in the '{OUTPUT_FOLDER}' folder.")
