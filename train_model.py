@@ -121,15 +121,15 @@ if __name__ == "__main__":
         plt.close()
 
         # 3. Feature Importance Plot
-        importances = model.feature_importances_
-        plt.figure(figsize=(10, 4))
-        plt.bar(range(len(importances)), importances)
-        plt.title('Feature Importances (Random Forest)')
-        plt.xlabel('Feature Index')
-        plt.ylabel('Importance')
-        plt.tight_layout()
-        plt.savefig('feature_importance.png')
-        plt.close()
+        #importances = model.feature_importances_
+        #plt.figure(figsize=(10, 4))
+        #plt.bar(range(len(importances)), importances)
+        #plt.title('Feature Importances (Random Forest)')
+        #plt.xlabel('Feature Index')
+        #plt.ylabel('Importance')
+        #plt.tight_layout()
+        #plt.savefig('feature_importance.png')
+        #plt.close()
 
         print("\n--- Performing Final Check on Validation Data ---")
         X_val, y_val = load_dataset(base_dataset_path, 'Validation')
