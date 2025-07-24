@@ -47,9 +47,18 @@ else:
         # Save normal images in the normal folder
         cv2.imwrite(os.path.join(normal_folder, f'normal_{i}_v1.jpg'), np.clip(gray_image, 0, 255).astype(np.uint8))
         cv2.imwrite(os.path.join(normal_folder, f'normal_{i}_v2.jpg'), normal_v2)
-        cv2.imwrite(os.path.join(normal_folder, f'normal_{i}_v3.jpg'), normal_v3)   
+        cv2.imwrite(os.path.join(normal_folder, f'normal_{i}_v3.jpg'), normal_v3)
+        # Create training, testing, and validation folders
+        train_folder = os.path.join(OUTPUT_FOLDER, 'Train')
+        test_folder = os.path.join(OUTPUT_FOLDER, 'Test')
+        val_folder = os.path.join(OUTPUT_FOLDER, 'Validation')
+        if not os.path.exists(train_folder):
+            os.makedirs(train_folder)
+        if not os.path.exists(test_folder):
+            os.makedirs(test_folder)
+        if not os.path.exists(val_folder):
+            os.makedirs(val_folder)
 
-        
         # --- 2. Create HYPOTHERMIC images (3 versions) ---
         # Simulate cooling by darkening parts of the image
         hypo_base = gray_image.copy().astype(float)
@@ -74,6 +83,16 @@ else:
         cv2.imwrite(os.path.join(hypo_folder, f'hypothermic_{i}_v1.jpg'), np.clip(hypo_base, 0, 255).astype(np.uint8))
         cv2.imwrite(os.path.join(hypo_folder, f'hypothermic_{i}_v2.jpg'), hypo_v2)
         cv2.imwrite(os.path.join(hypo_folder, f'hypothermic_{i}_v3.jpg'), hypo_v3)
+        #Creat training, testing, and validation folders
+        train_folder = os.path.join(OUTPUT_FOLDER, 'Train')
+        test_folder = os.path.join(OUTPUT_FOLDER, 'Test')
+        val_folder = os.path.join(OUTPUT_FOLDER, 'Validation')
+        if not os.path.exists(train_folder):
+            os.makedirs(train_folder)
+        if not os.path.exists(test_folder):
+            os.makedirs(test_folder)
+        if not os.path.exists(val_folder):
+            os.makedirs(val_folder)
 
         # --- 3. Create HYPERTHERMIC images (3 versions) ---
         # Simulate fever by increasing brightness and reducing contrast
@@ -92,5 +111,14 @@ else:
         cv2.imwrite(os.path.join(hyper_folder, f'hyperthermic_{i}_v2.jpg'), hyper_v2)
         cv2.imwrite(os.path.join(hyper_folder, f'hyperthermic_{i}_v3.jpg'), hyper_v3)
         print(f"Processed {filename}: Created 9 new images (3 normal, 3 hypothermic, 3 hyperthermic)")          
-
+        #Creat training, testing, and validation folders
+        train_folder = os.path.join(OUTPUT_FOLDER, 'Train')
+        test_folder = os.path.join(OUTPUT_FOLDER, 'Test')
+        val_folder = os.path.join(OUTPUT_FOLDER, 'Validation')
+        if not os.path.exists(train_folder):
+            os.makedirs(train_folder)
+        if not os.path.exists(test_folder):
+            os.makedirs(test_folder)
+        if not os.path.exists(val_folder):
+            os.makedirs(val_folder)
     print(f"Success! Generated {len(image_files) * 9} new images in the '{OUTPUT_FOLDER}' folder.")
