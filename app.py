@@ -5,9 +5,10 @@ import numpy as np
 from flask import Flask, request, render_template_string, url_for # Import url_for
 import google.generativeai as genai
 from skimage.feature import local_binary_pattern
+import json # Ensure json is imported for parsing
 
 # --- CONFIGURATION ---
-GEMMA_API_KEY = 'YOUR_API_KEY_GOES_HERE' # Paste your actual Gemma API key
+GEMMA_API_KEY = 'AIzaSyDMU1Pw-sYSu-FIZbOQTcGlK5hgCZljf7s' # Paste your actual Gemma API key
 
 # --- INITIALIZE APP & MODELS ---
 app = Flask(__name__)
@@ -62,9 +63,10 @@ def get_gemma_response(diagnosis):
     prompt = f"""
     An infant's thermal scan resulted in a diagnosis of '{diagnosis}'.
     You are a clinical assistant AI. Generate a JSON object with the following three keys:
-    1. "nurse_plan": A concise, 3-step action plan for a nurse in a low-resource clinic.
+    1. "nurse_plan": A concise, 3-step action plan for a nurse in a low-resource clinic. Each step should be a separate point.
     2. "parent_message_hindi": A simple, reassuring explanation for a parent in Hindi.
     3. "video_id": Provide only the YouTube video ID for a relevant instructional video. For 'Hypothermia Risk', use 'Z42K_t-v8MY'. For 'Hyperthermia Risk', use 'NpRZ-p-vgoY'. For 'Normal', use '3yS-x98Z_eU'.
+    Ensure the output is a valid JSON string.
     """
     try:
         response = gemma_model.generate_content(prompt)
@@ -85,24 +87,24 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ThermoVision AI - Nurse Dashboard</title>
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; 
-            background-color: #f4f7f9; 
-            color: #333; 
-            margin: 0; 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f4f7f9;
+            color: #333;
+            margin: 0;
             padding: 20px;
             background-image: url('{{ url_for("static", filename="background.jpg") }}'); /* Background image */
             background-size: cover; /* Cover the entire background */
             background-attachment: fixed; /* Keep background fixed when scrolling */
             background-position: center; /* Center the background image */
         }
-        .container { 
-            max-width: 800px; 
-            margin: auto; 
+        .container {
+            max-width: 800px;
+            margin: auto;
             background: rgba(255, 255, 255, 0.9); /* Semi-transparent white background */
-            padding: 25px; 
-            border-radius: 10px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         h1, h2 { color: #1a73e8; }
         h1 { text-align: center; }
@@ -127,7 +129,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <h1>ThermoVision AI Dashboard</h1>
-        
+
         <div class="upload-section">
             <h2>Upload Infant Thermal Image</h2>
             <form method="post" enctype="multipart/form-data">
@@ -141,7 +143,7 @@ HTML_TEMPLATE = """
             <div class="result-box {{ diagnosis_class }}">
                 <strong>Diagnosis:</strong> {{ diagnosis }}
             </div>
-            
+
             <div class="result-box">
                 <strong>Action Plan for Nurse:</strong>
                 <p>{{ nurse_plan | safe }}</p>
@@ -151,7 +153,7 @@ HTML_TEMPLATE = """
                 <strong>Message for Parents (Hindi):</strong>
                 <p>{{ parent_message }}</p>
             </div>
-            
+
             {# --- Specific Sections for Hypothermic and Hyperthermic Conditions --- #}
             {% if diagnosis == 'Hypothermic' %}
             <div class="specific-condition-info hypothermic">
@@ -212,33 +214,41 @@ def index():
                 diagnosis = prediction[0]
             else:
                 diagnosis = "Error: Could not process image"
-            
+
             # 2. Trigger Gemma
-            import json
             gemma_data_str = get_gemma_response(diagnosis)
             gemma_data = json.loads(gemma_data_str)
-            
+
             nurse_plan_raw = gemma_data.get('nurse_plan', 'N/A')
-            # Assuming nurse_plan might be a numbered list from Gemma, adjust formatting
-            if diagnosis != "Error: Could not process image":
-                # Only apply numbered list if there's an actual diagnosis
-                nurse_plan_html = "<ul>" + "".join([f"<li>{step.strip()}</li>" for step in nurse_plan_raw.split('.') if step.strip()]) + "</ul>"
+
+            # --- START OF FIX FOR 'AttributeError: 'list' object has no attribute 'split'' ---
+            nurse_plan_html = ""
+            if isinstance(nurse_plan_raw, list):
+                # If Gemma returns a list, format it as an unordered list directly
+                nurse_plan_html = "<ul>" + "".join([f"<li>{item.strip()}</li>" for item in nurse_plan_raw if item.strip()]) + "</ul>"
+            elif isinstance(nurse_plan_raw, str):
+                # If Gemma returns a string (as expected), process it to split by periods
+                if diagnosis != "Error: Could not process image":
+                    # Only apply numbered list if there's an actual diagnosis
+                    nurse_plan_html = "<ul>" + "".join([f"<li>{step.strip()}</li>" for step in nurse_plan_raw.split('.') if step.strip()]) + "</ul>"
+                else:
+                    nurse_plan_html = nurse_plan_raw.replace('\n', '<br>') # Fallback for error or non-list format
             else:
-                nurse_plan_html = nurse_plan_raw.replace('\n', '<br>') # Fallback for error or non-list format
-            
+                # Fallback for unexpected data types
+                nurse_plan_html = str(nurse_plan_raw).replace('\n', '<br>')
+            # --- END OF FIX ---
+
             # Pass all data to the dashboard
-            return render_template_string(HTML_TEMPLATE, 
+            return render_template_string(HTML_TEMPLATE,
                                           diagnosis=diagnosis,
                                           diagnosis_class=diagnosis.lower(),
                                           nurse_plan=nurse_plan_html,
                                           parent_message=gemma_data.get('parent_message_hindi', 'N/A'),
                                           video_id=gemma_data.get('video_id', '3yS-x98Z_eU'))
-    
+
     # Render the initial page with the upload form
     return render_template_string(HTML_TEMPLATE, diagnosis=None)
 
 # --- RUN THE APP ---
 if __name__ == '__main__':
     app.run(debug=True)
-
-    
