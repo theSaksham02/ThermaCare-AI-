@@ -1,0 +1,242 @@
+import os
+import joblib
+import cv2
+import numpy as np
+from flask import Flask, request, render_template_string, url_for # Import url_for
+import google.generativeai as genai
+from skimage.feature import local_binary_pattern
+
+# --- CONFIGURATION ---
+GEMMA_API_KEY = 'YOUR_API_KEY_GOES_HERE' # Paste your actual Gemma API key
+
+# --- INITIALIZE APP & MODELS ---
+app = Flask(__name__)
+
+# Load your saved model
+model = joblib.load('thermo_model.joblib')
+# Configure Gemma
+genai.configure(api_key=GEMMA_API_KEY)
+gemma_model = genai.GenerativeModel('gemini-1.5-flash')
+
+# --- HELPER FUNCTIONS ---
+def extract_features(image_path):
+    """
+    Extracts a combined feature vector of HSV color histograms and LBP texture features.
+    This must be IDENTICAL to the function used in Train.py.
+    """
+    try:
+        image = cv2.imread(image_path)
+        if image is None: return None
+
+        # Convert to HSV for color features
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        h_hist = cv2.calcHist([hsv_image], [0], None, [16], [0, 180])
+        s_hist = cv2.calcHist([hsv_image], [1], None, [16], [0, 256])
+        v_hist = cv2.calcHist([hsv_image], [2], None, [16], [0, 256])
+
+        # Normalize histograms
+        cv2.normalize(h_hist, h_hist)
+        cv2.normalize(s_hist, s_hist)
+        cv2.normalize(v_hist, v_hist)
+
+        # Convert to grayscale for LBP texture features
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        lbp = local_binary_pattern(gray_image, P=8, R=1, method="uniform")
+        (lbp_hist, _) = np.histogram(lbp.ravel(), bins=np.arange(0, 11), range=(0, 10))
+        lbp_hist = lbp_hist.astype("float")
+        lbp_hist /= (lbp_hist.sum() + 1e-6) # Normalize
+
+        # Combine all features into one powerful vector
+        return np.concatenate([
+            h_hist.flatten(),
+            s_hist.flatten(),
+            v_hist.flatten(),
+            lbp_hist
+        ])
+    except Exception as e:
+        print(f"Error processing {image_path}: {e}")
+        return None
+
+def get_gemma_response(diagnosis):
+    # This function triggers Gemma to get all the required info
+    prompt = f"""
+    An infant's thermal scan resulted in a diagnosis of '{diagnosis}'.
+    You are a clinical assistant AI. Generate a JSON object with the following three keys:
+    1. "nurse_plan": A concise, 3-step action plan for a nurse in a low-resource clinic.
+    2. "parent_message_hindi": A simple, reassuring explanation for a parent in Hindi.
+    3. "video_id": Provide only the YouTube video ID for a relevant instructional video. For 'Hypothermia Risk', use 'Z42K_t-v8MY'. For 'Hyperthermia Risk', use 'NpRZ-p-vgoY'. For 'Normal', use '3yS-x98Z_eU'.
+    """
+    try:
+        response = gemma_model.generate_content(prompt)
+        # Clean up the response to be valid JSON
+        clean_json_string = response.text.strip().replace('```json', '').replace('```', '')
+        return clean_json_string
+    except Exception as e:
+        print(f"Gemma API Error: {e}")
+        # Return a fallback JSON so the app doesn't crash
+        return '{"nurse_plan": "Error communicating with AI assistant.", "parent_message_hindi": "त्रुटि", "video_id": "3yS-x98Z_eU"}'
+
+# --- HTML TEMPLATE FOR THE DASHBOARD ---
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThermoVision AI - Nurse Dashboard</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; 
+            background-color: #f4f7f9; 
+            color: #333; 
+            margin: 0; 
+            padding: 20px;
+            background-image: url('{{ url_for("static", filename="background.jpg") }}'); /* Background image */
+            background-size: cover; /* Cover the entire background */
+            background-attachment: fixed; /* Keep background fixed when scrolling */
+            background-position: center; /* Center the background image */
+        }
+        .container { 
+            max-width: 800px; 
+            margin: auto; 
+            background: rgba(255, 255, 255, 0.9); /* Semi-transparent white background */
+            padding: 25px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+        }
+        h1, h2 { color: #1a73e8; }
+        h1 { text-align: center; }
+        .upload-section { text-align: center; padding: 20px; border: 2px dashed #ccc; border-radius: 8px; margin-bottom: 25px; }
+        .results-section { display: {% if diagnosis %}block{% else %}none{% endif %}; }
+        .result-box { background-color: #e8f0fe; border-left: 5px solid #1a73e8; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+        .result-box.hyperthermic { background-color: #fce8e6; border-left-color: #d93025; }
+        .result-box.hypothermic { background-color: #e6f4ea; border-left-color: #1e8e3e; }
+        .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; margin-top: 20px; border-radius: 8px; }
+        .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        button { background-color: #1a73e8; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #1558b3; }
+        .specific-condition-info {
+            background-color: #fff3e0; /* Light orange background */
+            border-left: 5px solid #ff9800; /* Orange border */
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ThermoVision AI Dashboard</h1>
+        
+        <div class="upload-section">
+            <h2>Upload Infant Thermal Image</h2>
+            <form method="post" enctype="multipart/form-data">
+                <input type="file" name="file" required>
+                <button type="submit">Analyze</button>
+            </form>
+        </div>
+
+        <div class="results-section">
+            <h2>Analysis Results</h2>
+            <div class="result-box {{ diagnosis_class }}">
+                <strong>Diagnosis:</strong> {{ diagnosis }}
+            </div>
+            
+            <div class="result-box">
+                <strong>Action Plan for Nurse:</strong>
+                <p>{{ nurse_plan | safe }}</p>
+            </div>
+
+            <div class="result-box">
+                <strong>Message for Parents (Hindi):</strong>
+                <p>{{ parent_message }}</p>
+            </div>
+            
+            {# --- Specific Sections for Hypothermic and Hyperthermic Conditions --- #}
+            {% if diagnosis == 'Hypothermic' %}
+            <div class="specific-condition-info hypothermic">
+                <h3>Hypothermia Risk - Important Considerations:</h3>
+                <ul>
+                    <li>Ensure infant is warm and dry immediately.</li>
+                    <li>Utilize skin-to-skin contact (Kangaroo Mother Care if applicable).</li>
+                    <li>Cover with warm blankets or use radiant warmer.</li>
+                    <li>Monitor temperature closely and re-evaluate frequently.</li>
+                    <li>Feed frequently (breastfeeding encouraged).</li>
+                </ul>
+            </div>
+            {% elif diagnosis == 'Hyperthermic' %}
+            <div class="specific-condition-info hyperthermic">
+                <h3>Hyperthermia Risk - Important Considerations:</h3>
+                <ul>
+                    <li>Remove excess clothing/blankets.</li>
+                    <li>Encourage frequent fluids (breastfeeding/formula).</li>
+                    <li>Cool environment (ensure good ventilation, avoid direct sun).</li>
+                    <li>Monitor temperature closely; avoid rapid cooling.</li>
+                    <li>Look for signs of dehydration.</li>
+                </ul>
+            </div>
+            {% endif %}
+
+            <h2>Instructional Video</h2>
+            <div class="video-container">
+                <iframe width="560" height="315" src="https://www.youtube.com/embed/{{ video_id }}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+# --- FLASK ROUTES ---
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        # Check if a file was uploaded
+        if 'file' not in request.files:
+            return "No file part", 400
+        file = request.files['file']
+        if file.filename == '':
+            return "No selected file", 400
+
+        if file:
+            # Save the uploaded file temporarily
+            filepath = os.path.join('uploads', file.filename)
+            if not os.path.exists('uploads'):
+                os.makedirs('uploads')
+            file.save(filepath)
+
+            # 1. Get diagnosis from your model
+            features = extract_features(filepath)
+            if features is not None:
+                prediction = model.predict([features])
+                diagnosis = prediction[0]
+            else:
+                diagnosis = "Error: Could not process image"
+            
+            # 2. Trigger Gemma
+            import json
+            gemma_data_str = get_gemma_response(diagnosis)
+            gemma_data = json.loads(gemma_data_str)
+            
+            nurse_plan_raw = gemma_data.get('nurse_plan', 'N/A')
+            # Assuming nurse_plan might be a numbered list from Gemma, adjust formatting
+            if diagnosis != "Error: Could not process image":
+                # Only apply numbered list if there's an actual diagnosis
+                nurse_plan_html = "<ul>" + "".join([f"<li>{step.strip()}</li>" for step in nurse_plan_raw.split('.') if step.strip()]) + "</ul>"
+            else:
+                nurse_plan_html = nurse_plan_raw.replace('\n', '<br>') # Fallback for error or non-list format
+            
+            # Pass all data to the dashboard
+            return render_template_string(HTML_TEMPLATE, 
+                                          diagnosis=diagnosis,
+                                          diagnosis_class=diagnosis.lower(),
+                                          nurse_plan=nurse_plan_html,
+                                          parent_message=gemma_data.get('parent_message_hindi', 'N/A'),
+                                          video_id=gemma_data.get('video_id', '3yS-x98Z_eU'))
+    
+    # Render the initial page with the upload form
+    return render_template_string(HTML_TEMPLATE, diagnosis=None)
+
+# --- RUN THE APP ---
+if __name__ == '__main__':
+    app.run(debug=True)
