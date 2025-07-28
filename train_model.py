@@ -136,3 +136,10 @@ if __name__ == "__main__":
         if len(X_val) > 0:
             val_accuracy = model.score(X_val, y_val)
             print(f"Final accuracy on unseen validation set: {val_accuracy * 100:.2f}%")
+
+import joblib
+
+#By adding this, it will save our model trained above to a file.
+print("\n--- Saving the trained model to a file ---")
+joblib.dump(model, 'thermo_model.joblib')
+print("Model saved as thermo_model.joblib")
