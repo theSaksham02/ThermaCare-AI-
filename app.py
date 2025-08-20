@@ -68,6 +68,8 @@ def get_gemma_response(diagnosis):
     3. "video_id": Provide only the YouTube video ID for a relevant instructional video. For 'Hypothermia Risk', use 'Z42K_t-v8MY'. For 'Hyperthermia Risk', use 'NpRZ-p-vgoY'. For 'Normal', use '3yS-x98Z_eU'.
     Ensure the output is a valid JSON string.
     """
+    if gemma_model is None:
+        return '{"nurse_plan": "Error communicating with AI assistant.", "parent_message_hindi": "त्रुटि", "video_id": "3yS-x98Z_eU"}'
     try:
         response = gemma_model.generate_content(prompt)
         # Clean up the response to be valid JSON
@@ -251,4 +253,6 @@ def index():
 
 # --- RUN THE APP ---
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.getenv('PORT', '5050'))
+    # Use 127.0.0.1 for local only. Change to '0.0.0.0' when deploying.
+    app.run(host='127.0.0.1', port=port, debug=True)
