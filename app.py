@@ -2,13 +2,13 @@ import os
 import joblib
 import cv2
 import numpy as np
-from flask import Flask, request, render_template_string, url_for # Import url_for
+from flask import Flask, request, render_template_string, url_for
 import google.generativeai as genai
 from skimage.feature import local_binary_pattern
-import json # Ensure json is imported for parsing
+import json
 
 # --- CONFIGURATION ---
-GEMMA_API_KEY = 'AIzaSyDMU1Pw-sYSu-FIZbOQTcGlK5hgCZljf7s' # Paste your actual Gemma API key
+GEMMA_API_KEY = 'AIzaSyDMU1Pw-sYSu-FIZbOQTcGlK5hgCZljf7s'
 
 # --- INITIALIZE APP & MODELS ---
 app = Flask(__name__)
@@ -23,197 +23,366 @@ gemma_model = genai.GenerativeModel('gemini-1.5-flash')
 def extract_features(image_path):
     """
     Extracts a combined feature vector of HSV color histograms and LBP texture features.
-    Optimized for speed while maintaining accuracy.
+    This must be IDENTICAL to the function used in Train.py.
     """
     try:
-        # Load image with optimized settings
-        image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        image = cv2.imread(image_path)
         if image is None: return None
 
-        # Resize image for faster processing (maintain aspect ratio)
-        height, width = image.shape[:2]
-        if width > 512 or height > 512:
-            scale = min(512/width, 512/height)
-            new_width = int(width * scale)
-            new_height = int(height * scale)
-            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
-
-        # Convert to HSV for color features (optimized)
+        # Convert to HSV for color features
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        
-        # Calculate histograms with optimized parameters
         h_hist = cv2.calcHist([hsv_image], [0], None, [16], [0, 180])
         s_hist = cv2.calcHist([hsv_image], [1], None, [16], [0, 256])
         v_hist = cv2.calcHist([hsv_image], [2], None, [16], [0, 256])
 
-        # Fast normalization
-        h_hist = h_hist.flatten() / (h_hist.sum() + 1e-6)
-        s_hist = s_hist.flatten() / (s_hist.sum() + 1e-6)
-        v_hist = v_hist.flatten() / (v_hist.sum() + 1e-6)
+        # Normalize histograms
+        cv2.normalize(h_hist, h_hist)
+        cv2.normalize(s_hist, s_hist)
+        cv2.normalize(v_hist, v_hist)
 
         # Convert to grayscale for LBP texture features
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Optimized LBP calculation
         lbp = local_binary_pattern(gray_image, P=8, R=1, method="uniform")
-        lbp_hist, _ = np.histogram(lbp.ravel(), bins=10, range=(0, 10))
-        lbp_hist = lbp_hist.astype("float") / (lbp_hist.sum() + 1e-6)
+        (lbp_hist, _) = np.histogram(lbp.ravel(), bins=np.arange(0, 11), range=(0, 10))
+        lbp_hist = lbp_hist.astype("float")
+        lbp_hist /= (lbp_hist.sum() + 1e-6) # Normalize
 
-        # Combine all features into one vector
-        return np.concatenate([h_hist, s_hist, v_hist, lbp_hist])
-        
+        # Combine all features into one powerful vector
+        return np.concatenate([
+            h_hist.flatten(),
+            s_hist.flatten(),
+            v_hist.flatten(),
+            lbp_hist
+        ])
     except Exception as e:
         print(f"Error processing {image_path}: {e}")
         return None
 
 def get_gemma_response(diagnosis):
-    # Fast fallback responses for immediate results
-    fallback_responses = {
-        'Normal': {
-            'nurse_plan': '1. Monitor infant temperature every 2-3 hours. 2. Ensure proper feeding and hydration. 3. Maintain comfortable room temperature (22-24°C).',
-            'parent_message_hindi': 'आपके बच्चे का तापमान सामान्य है। कोई चिंता की बात नहीं है। नियमित रूप से खिलाते रहें और सामान्य देखभाल जारी रखें।',
-            'video_id': '3yS-x98Z_eU'
-        },
-        'Hypothermic': {
-            'nurse_plan': '1. Immediately warm the infant using skin-to-skin contact or warm blankets. 2. Monitor temperature every 30 minutes. 3. Ensure frequent feeding and check for signs of infection.',
-            'parent_message_hindi': 'बच्चे का तापमान कम है। तुरंत गर्म कपड़े पहनाएं और स्तनपान कराएं। डॉक्टर से संपर्क करें।',
-            'video_id': 'Z42K_t-v8MY'
-        },
-        'Hyperthermic': {
-            'nurse_plan': '1. Remove excess clothing and blankets immediately. 2. Cool the environment and ensure proper ventilation. 3. Monitor temperature and hydration status closely.',
-            'parent_message_hindi': 'बच्चे का तापमान अधिक है। अतिरिक्त कपड़े हटा दें और ठंडी जगह में रखें। तरल पदार्थ दें।',
-            'video_id': 'NpRZ-p-vgoY'
-        }
-    }
-    
-    # Return immediate fallback response for speed
-    if diagnosis in fallback_responses:
-        return json.dumps(fallback_responses[diagnosis])
-    
-    # Fallback for unknown diagnosis
-    return json.dumps({
-        'nurse_plan': '1. Monitor the infant closely. 2. Check temperature regularly. 3. Contact healthcare provider if concerned.',
-        'parent_message_hindi': 'बच्चे की निगरानी करें और डॉक्टर से सलाह लें।',
-        'video_id': '3yS-x98Z_eU'
-    })
+    # This function triggers Gemma to get all the required info
+    prompt = f"""
+    An infant's thermal scan resulted in a diagnosis of '{diagnosis}'.
+    You are a clinical assistant AI. Generate a JSON object with the following three keys:
+    1. "nurse_plan": A concise, 3-step action plan for a nurse in a low-resource clinic. Each step should be a separate point.
+    2. "parent_message_hindi": A simple, reassuring explanation for a parent in Hindi.
+    3. "video_id": Provide only the YouTube video ID for a relevant instructional video. For 'Hypothermia Risk', use 'Z42K_t-v8MY'. For 'Hyperthermia Risk', use 'NpRZ-p-vgoY'. For 'Normal', use '3yS-x98Z_eU'.
+    Ensure the output is a valid JSON string.
+    """
+    if gemma_model is None:
+        return '{"nurse_plan": "Error communicating with AI assistant.", "parent_message_hindi": "त्रुटि", "video_id": "3yS-x98Z_eU"}'
+    try:
+        response = gemma_model.generate_content(prompt)
+        # Clean up the response to be valid JSON
+        clean_json_string = response.text.strip().replace('```json', '').replace('```', '')
+        return clean_json_string
+    except Exception as e:
+        print(f"Gemma API Error: {e}")
+        # Return a fallback JSON so the app doesn't crash
+        return '{"nurse_plan": "Error communicating with AI assistant.", "parent_message_hindi": "त्रुटि", "video_id": "3yS-x98Z_eU"}'
 
-# --- HTML TEMPLATE FOR THE PREMIUM DASHBOARD ---
+# --- HTML TEMPLATE FOR THE DASHBOARD ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ThermoVision AI - Premium Nurse Dashboard</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <meta name="description" content="Advanced thermal imaging analysis for infant care. AI-powered diagnosis and clinical guidance.">
-    <meta name="keywords" content="thermal imaging, infant care, AI diagnosis, healthcare, temperature monitoring">
+    <title>ThermoVision AI - Nurse Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(-45deg, #98d8c8, #7fb069, #a8d5ba, #6b8e23);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            color: #2d3748;
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        @keyframes gradientShift {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #10a37f, #1a73e8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+        
+        h2 {
+            color: #10a37f;
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .upload-section {
+            text-align: center;
+            padding: 40px;
+            border: 3px dashed #e2e8f0;
+            border-radius: 15px;
+            margin-bottom: 40px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+            transition: all 0.3s ease;
+        }
+        
+        .upload-section:hover {
+            border-color: #10a37f;
+            background: rgba(16, 163, 127, 0.05);
+            transform: translateY(-2px);
+        }
+        
+        .upload-section input[type="file"] {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            background: white;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-section input[type="file"]:focus {
+            outline: none;
+            border-color: #10a37f;
+            box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+        }
+        
+        .results-section {
+            display: {% if diagnosis %}block{% else %}none{% endif %};
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .result-box {
+            background: white;
+            border-left: 5px solid #10a37f;
+            padding: 25px;
+            margin-bottom: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .result-box:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .result-box.hyperthermic {
+            background: linear-gradient(135deg, #fff5f5, #fed7d7);
+            border-left-color: #f56565;
+        }
+        
+        .result-box.hypothermic {
+            background: linear-gradient(135deg, #f0fff4, #c6f6d5);
+            border-left-color: #48bb78;
+        }
+        
+        .result-box strong {
+            color: #2d3748;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        .video-container {
+            position: relative;
+            padding-bottom: 56.25%;
+            height: 0;
+            overflow: hidden;
+            max-width: 100%;
+            background: #000;
+            margin-top: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 15px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #10a37f, #0d8a6f);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(16, 163, 127, 0.3);
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #0d8a6f, #0a6b5a);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 163, 127, 0.4);
+        }
+        
+        .specific-condition-info {
+            background: linear-gradient(135deg, #fffaf0, #feebc8);
+            border-left: 5px solid #ed8936;
+            padding: 25px;
+            margin-top: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        .specific-condition-info h3 {
+            color: #c05621;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        
+        .specific-condition-info ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .specific-condition-info li {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(237, 137, 54, 0.1);
+            position: relative;
+            padding-left: 25px;
+        }
+        
+        .specific-condition-info li::before {
+            content: '•';
+            color: #ed8936;
+            font-weight: bold;
+            font-size: 1.2rem;
+            position: absolute;
+            left: 0;
+        }
+        
+        .specific-condition-info li:last-child {
+            border-bottom: none;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 10px;
+            }
+            
+            .container {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .upload-section {
+                padding: 30px 20px;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <!-- Header Section -->
-        <div class="header fade-in-up">
-            <h1>ThermoVision AI</h1>
-            <p>Advanced thermal imaging analysis for infant care. Upload thermal images for instant AI-powered diagnosis and clinical guidance.</p>
+        <h1>ThermoVision AI Dashboard</h1>
+
+        <div class="upload-section">
+            <h2>Upload Infant Thermal Image</h2>
+            <form method="post" enctype="multipart/form-data">
+                <input type="file" name="file" required>
+                <button type="submit">Analyze</button>
+            </form>
         </div>
 
-        <!-- Main Content Grid -->
-        <div class="main-content">
-            <!-- Upload Section -->
-            <div class="upload-section fade-in-left">
-                <h2>Upload Thermal Image</h2>
-                <form method="post" enctype="multipart/form-data">
-                    <div class="file-upload-area" onclick="document.getElementById('file-input').click()">
-                        <input type="file" id="file-input" name="file" accept="image/*" required class="file-input">
-                        <div class="upload-icon">📷</div>
-                        <div class="upload-text">Click to select or drag & drop thermal image</div>
-                        <div class="upload-button">Choose File</div>
-                    </div>
-                    <button type="submit" class="upload-button" style="margin-top: 1rem; width: 100%;">
-                        Analyze Image
-                    </button>
-                </form>
+        <div class="results-section">
+            <h2>Analysis Results</h2>
+            <div class="result-box {{ diagnosis_class }}">
+                <strong>Diagnosis:</strong> {{ diagnosis }}
             </div>
 
-            <!-- Results Section -->
-            <div class="results-section {% if diagnosis %}show{% endif %} fade-in-right">
-                <h2>Analysis Results</h2>
-                
-                <!-- Diagnosis Card -->
-                <div class="result-card diagnosis">
-                    <h3>Diagnosis</h3>
-                    <div class="diagnosis-badge {{ diagnosis_class if diagnosis else 'normal' }}">
-                        {{ diagnosis if diagnosis else 'No analysis yet' }}
-                    </div>
-                </div>
-
-                <!-- Nurse Plan Card -->
-                <div class="result-card nurse-plan">
-                    <h3>Action Plan for Nurse</h3>
-                    <div>{{ nurse_plan | safe if nurse_plan else 'Upload an image to get clinical guidance' }}</div>
-                </div>
-
-                <!-- Parent Message Card -->
-                <div class="result-card parent-message">
-                    <h3>Message for Parents (Hindi)</h3>
-                    <div>{{ parent_message if parent_message else 'Upload an image to get parent guidance' }}</div>
-                </div>
-
-                <!-- Specific Condition Information -->
-                {% if diagnosis == 'Hypothermic' %}
-                <div class="condition-info">
-                    <h3>Hypothermia Risk - Important Considerations</h3>
-                    <ul>
-                        <li>Ensure infant is warm and dry immediately</li>
-                        <li>Utilize skin-to-skin contact (Kangaroo Mother Care if applicable)</li>
-                        <li>Cover with warm blankets or use radiant warmer</li>
-                        <li>Monitor temperature closely and re-evaluate frequently</li>
-                        <li>Feed frequently (breastfeeding encouraged)</li>
-                    </ul>
-                </div>
-                {% elif diagnosis == 'Hyperthermic' %}
-                <div class="condition-info">
-                    <h3>Hyperthermia Risk - Important Considerations</h3>
-                    <ul>
-                        <li>Remove excess clothing/blankets</li>
-                        <li>Encourage frequent fluids (breastfeeding/formula)</li>
-                        <li>Cool environment (ensure good ventilation, avoid direct sun)</li>
-                        <li>Monitor temperature closely; avoid rapid cooling</li>
-                        <li>Look for signs of dehydration</li>
-                    </ul>
-                </div>
-                {% endif %}
+            <div class="result-box">
+                <strong>Action Plan for Nurse:</strong>
+                <p>{{ nurse_plan | safe }}</p>
             </div>
-        </div>
 
-        <!-- Video Section -->
-        {% if video_id %}
-        <div class="video-section fade-in-up">
+            <div class="result-box">
+                <strong>Message for Parents (Hindi):</strong>
+                <p>{{ parent_message }}</p>
+            </div>
+
+            {% if diagnosis == 'Hypothermic' %}
+            <div class="specific-condition-info hypothermic">
+                <h3>Hypothermia Risk - Important Considerations:</h3>
+                <ul>
+                    <li>Ensure infant is warm and dry immediately.</li>
+                    <li>Utilize skin-to-skin contact (Kangaroo Mother Care if applicable).</li>
+                    <li>Cover with warm blankets or use radiant warmer.</li>
+                    <li>Monitor temperature closely and re-evaluate frequently.</li>
+                    <li>Feed frequently (breastfeeding encouraged).</li>
+                </ul>
+            </div>
+            {% elif diagnosis == 'Hyperthermic' %}
+            <div class="specific-condition-info hyperthermic">
+                <h3>Hyperthermia Risk - Important Considerations:</h3>
+                <ul>
+                    <li>Remove excess clothing/blankets.</li>
+                    <li>Encourage frequent fluids (breastfeeding/formula).</li>
+                    <li>Cool environment (ensure good ventilation, avoid direct sun).</li>
+                    <li>Monitor temperature closely; avoid rapid cooling.</li>
+                    <li>Look for signs of dehydration.</li>
+                </ul>
+            </div>
+            {% endif %}
+
             <h2>Instructional Video</h2>
             <div class="video-container">
-                <iframe src="https://www.youtube.com/embed/{{ video_id }}" 
-                        title="YouTube video player" 
-                        frameborder="0" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                        allowfullscreen>
-                </iframe>
+                <iframe width="560" height="315" src="https://www.youtube.com/embed/{{ video_id }}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
             </div>
         </div>
-        {% endif %}
-
-        <!-- Loading Animation -->
-        <div class="loading">
-            <div class="spinner"></div>
-            <p>Analyzing thermal image...</p>
-        </div>
     </div>
-
-    <!-- JavaScript -->
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
 """
@@ -236,7 +405,7 @@ def index():
                 os.makedirs('uploads')
             file.save(filepath)
 
-            # 1. Get diagnosis from your model (optimized)
+            # 1. Get diagnosis from your model
             features = extract_features(filepath)
             if features is not None:
                 prediction = model.predict([features])
@@ -244,7 +413,7 @@ def index():
             else:
                 diagnosis = "Error: Could not process image"
 
-            # 2. Get fast response (no API delay)
+            # 2. Trigger Gemma
             gemma_data_str = get_gemma_response(diagnosis)
             gemma_data = json.loads(gemma_data_str)
 
