@@ -7,9 +7,11 @@ const Footer = () => {
         <div className="grid md:grid-cols-4 gap-8">
           <div>
             <div className="flex items-center space-x-2 mb-4">
-              <div className="w-8 h-8 gradient-clinical rounded-lg flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">TV</span>
-              </div>
+              <img
+                src="/logo.png"
+                alt="ThermaCare AI"
+                className="h-8 w-8 rounded-lg object-contain"
+              />
               <span className="text-xl font-bold text-gradient">ThermoVision AI</span>
             </div>
             <p className="text-muted-foreground text-sm">

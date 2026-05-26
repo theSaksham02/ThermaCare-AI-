@@ -24,9 +24,11 @@ const Navigation = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 gradient-clinical rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">TV</span>
-            </div>
+            <img
+              src="/logo.png"
+              alt="ThermaCare AI"
+              className="h-8 w-8 rounded-lg object-contain"
+            />
             <span className="text-xl font-bold text-gradient">ThermoVision AI</span>
           </Link>
 
